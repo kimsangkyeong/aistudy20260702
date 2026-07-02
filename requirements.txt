@@ -19,3 +19,6 @@ langchain-google-genai==1.0.6
 # 6. Vector Database & Data Ingestion (RAG)
 chromadb==0.5.3
 pydantic==2.7.4
+
+# 7. pdf 추출
+pypdf==4.2.0

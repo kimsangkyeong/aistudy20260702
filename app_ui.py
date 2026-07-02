@@ -1,63 +1,75 @@
 import streamlit as st
 import json
 from langchain_core.messages import HumanMessage
-from app_agent import compiled_agent  # 앞서 작성한 LangGraph 컴파일 객체 임포트
+from app_agent import compiled_agent
 
-# ==========================================
-# 1. 페이지 기본 설정 및 테마 정의
-# ==========================================
-st.set_page_config(
-    page_title="OCP-Ops Agent 플랫폼",
-    page_icon="🤖",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
-
-st.title("🤖 OCP-Ops Agent : OpenShift 4.20 폐쇄망 운영 가이드")
-st.caption("Red Hat 공식 문서 RAG 및 실시간 검증 기반의 엔지니어 전용 멀티 에이전트 서비스")
+st.set_page_config(page_title="OCP-Ops 플랫폼", page_icon="⚙️", layout="wide")
+st.title("⚙️ OCP-Ops Agent 플랫폼")
+st.caption("OpenShift 4.20 Disconnected 환경 실무 운영 및 플레이북 질의 에이전트")
 st.markdown("---")
 
-# Session State를 이용한 채팅 이력 및 데이터 초기화
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-if "thread_id" not in st.session_state:
-    st.session_state.thread_id = "ocp_heavy_user_001"  # LangGraph Memory 식별용 ID
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = []
+if "session_thread_id" not in st.session_state:
+    st.session_state.session_thread_id = "ocp_session_unique_101"
 
-# ==========================================
-# 2. 사이드바 구성 (자주 묻는 질문 FAQ 단축 메뉴)
-# ==========================================
 with st.sidebar:
-    st.header("📌 자주 묻는 FAQ 플레이북")
-    st.subheader("원클릭으로 즉시 가이드를 확인하세요.")
-    
-    faq_list = [
+    st.header("📌 단축 FAQ 가이드")
+    faq_menu = [
         "선택 안 함",
         "OCP 4.20 폐쇄망 환경에서 pull-secret 자격증명 업데이트 방법",
         "Disconnected 환경 오프라인 레지스트리 미러링 설정 스크립트",
-        "4.20 버전 보안 정책 변경에 따른 사내 NetworkPolicy 가이드",
-        "폐쇄망 내부 오퍼레이터(Operator) 서브스크립션 카탈로그 소스 생성"
+        "4.20 버전 보안 정책 변경에 따른 사내 NetworkPolicy 가이드"
     ]
-    
-    selected_faq = st.selectbox("FAQ 목록을 탐색하세요:", faq_list)
-    
+    shortcut_selection = st.selectbox("빠른 질의 선택:", faq_menu)
     st.markdown("---")
-    st.info(
-        "💡 **운영 팁**\n\n"
-        "회사(Azure GPT-4o)와 집(Gemini Pro) 가동 환경에 따라 "
-        "자동으로 LLM과 임베딩 모델이 교체되므로 소스 코드를 별도 수정하지 않아도 됩니다."
-    )
+    st.markdown("🌐 **현재 인프라 작동 모드:**")
+    st.code(f"RUNNING_ENV 모드 활성화")
 
-# ==========================================
-# 3. 데이터 추론 및 UI 렌더링 헬퍼 함수
-# ==========================================
-def parse_and_show_response(response_content: str):
-    """Structured Output(JSON 문자열)을 파싱하여 UI 컴포넌트로 배치"""
+def render_json_ui(raw_string: str):
     try:
-        # 문자열로 들어온 JSON 파싱
-        data = json.loads(response_content.replace("'", '"')) # 싱글쿼테이션 방어 예외 처리
+        clean_str = raw_string.replace("'", '"')
+        parsed = json.loads(clean_str)
         
-        # 1. 요약 정보
-        st.subheader("📝 조치 요약")
-        st.success(data.get("summary", "요약 정보를 불러올 수 없습니다."))
+        st.subheader("📝 조치 사항 요약")
+        st.info(parsed.get("summary", "데이터 없음"))
         
-        #
+        st.subheader("📋 가이드 단계별 절차")
+        for i, step in enumerate(parsed.get("steps", []), 1):
+            st.markdown(f"**{i}.** {step}")
+            
+        st.subheader("💻 터미널 실행 코드 블록 (원클릭 카피)")
+        st.code(parsed.get("code_block", "# 스크립트 없음"), language="bash")
+        
+        st.subheader("🔗 출처 근거 가이드 문서")
+        for ref in parsed.get("references", []):
+            st.caption(f"• {ref}")
+    except Exception as e:
+        st.warning(f"구조화 포맷 파싱 우회 모드로 출력합니다. (이유: {e})")
+        st.write(raw_string)
+
+final_prompt = ""
+if shortcut_selection != "선택 안 함":
+    final_prompt = shortcut_selection
+else:
+    user_type_in = st.chat_input("질문할 내용을 입력해 주세요...")
+    if user_type_in:
+        final_prompt = user_type_in
+
+if final_prompt:
+    with st.chat_message("user"):
+        st.markdown(final_prompt)
+    st.session_state.chat_history.append({"role": "user", "content": final_prompt})
+    
+    graph_config = {"configurable": {"thread_id": st.session_state.session_thread_id}}
+    
+    with st.spinner("Multi-Agent 아키텍처가 RAG 문서를 기반으로 교차 유효성 검증을 수행하고 있습니다..."):
+        output_state = compiled_agent.invoke(
+            {"messages": [HumanMessage(content=final_prompt)]}, 
+            graph_config
+        )
+        ai_response_raw = output_state["messages"][-1].content
+        
+    with st.chat_message("assistant"):
+        render_json_ui(ai_response_raw)
+    st.session_state.chat_history.append({"role": "assistant", "content": ai_response_raw})
