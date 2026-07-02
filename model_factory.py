@@ -12,7 +12,7 @@ class ModelFactory:
         
         if env_type == "AZURE":
             return AzureChatOpenAI(
-                azure_deployment=os.getenv("AOAI_DEPLOY_GPT4O"),
+                azure_deployment=os.getenv("AOAI_DEPLOY_EMBED_3_SMALL"),
                 openai_api_key=os.getenv("AOAI_API_KEY"),
                 azure_endpoint=os.getenv("AOAI_ENDPOINT"),
                 api_version=os.getenv("AOAI_API_VERSION"),
@@ -31,7 +31,7 @@ class ModelFactory:
         
         if env_type == "AZURE":
             return AzureOpenAIEmbeddings(
-                azure_deployment=os.getenv("AOAI_DEPLOY_GPT4O"),
+                azure_deployment=os.getenv("AOAI_DEPLOY_EMBED_3_SMALL"),
                 openai_api_key=os.getenv("AOAI_API_KEY"),
                 azure_endpoint=os.getenv("AOAI_ENDPOINT"),
                 api_version=os.getenv("AOAI_API_VERSION"),
