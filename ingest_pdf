@@ -25,7 +25,7 @@ def run_multi_pdf_ingest(data_dir: str):
     print("-" * 50)
 
     all_chunks = []
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=900, chunk_overlap=150) [cite: 207]
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=900, chunk_overlap=150)
 
     # 2. 각 PDF 파일을 순회하며 텍스트 추출 및 청크 분할
     for index, pdf_path in enumerate(pdf_files, 1):
@@ -33,14 +33,14 @@ def run_multi_pdf_ingest(data_dir: str):
         print(f"[*] [{index}/{len(pdf_files)}] '{file_name}' 파싱 시작...")
         
         try:
-            loader = PyPDFLoader(pdf_path) [cite: 207]
-            pages = loader.load() [cite: 207]
+            loader = PyPDFLoader(pdf_path) 
+            pages = loader.load() 
             
             # 메타데이터 보강 (어느 파일에서 나온 정보인지 출처 추적 용이성 강화)
             for page in pages:
                 page.metadata["source_file"] = file_name
                 
-            chunks = text_splitter.split_documents(pages) [cite: 207]
+            chunks = text_splitter.split_documents(pages) 
             all_chunks.extend(chunks)
             print(f"    ➔ 파싱 완료: {len(pages)} 페이지 / 생성된 청크 {len(chunks)}개")
             
@@ -51,12 +51,12 @@ def run_multi_pdf_ingest(data_dir: str):
     print("-" * 50)
     print(f"[Content] 모든 PDF 파싱 완료. 총 통합 청크 수: {len(all_chunks)}개")
 
-    # 3. 현재 가동 환경에 연동된 임베딩 모델 로드 (Azure 또는 Gemini 자동 전환) [cite: 207]
-    load_dotenv() [cite: 207]
-    embeddings = ModelFactory.get_embeddings() [cite: 207]
-    db_path = os.getenv("CHROMA_DB_PATH", "./chroma_db") [cite: 207]
+    # 3. 현재 가동 환경에 연동된 임베딩 모델 로드 (Azure 또는 Gemini 자동 전환) 
+    load_dotenv() 
+    embeddings = ModelFactory.get_embeddings() 
+    db_path = os.getenv("CHROMA_DB_PATH", "./chroma_db") 
 
-    print(f"[*] 로컬 Chroma DB 빌드 및 저장 중... (경로: {db_path})") [cite: 207]
+    print(f"[*] 로컬 Chroma DB 빌드 및 저장 중... (경로: {db_path})") 
     
     # 여러 개의 문서 조각을 한 번에 Vector DB에 적재 및 퍼시스트
     vector_store = Chroma.from_documents(
@@ -65,7 +65,7 @@ def run_multi_pdf_ingest(data_dir: str):
         persist_directory=db_path
     )
     
-    print(f"[🎉 완료] 모든 OCP 기술 PDF 가이드북이 '{db_path}'에 통합 저장되었습니다! [cite: 207]")
+    print(f"[🎉 완료] 모든 OCP 기술 PDF 가이드북이 '{db_path}'에 통합 저장되었습니다! ")
 
 if __name__ == "__main__":
     # 데이터 폴더 경로 설정 및 자동 생성 예외 처리
