@@ -3,8 +3,8 @@ import streamlit as st
 import requests
 
 st.set_page_config(page_title="OCP-Ops 플랫폼 v2", page_icon="⚙️", layout="wide")
-st.title("⚙️ OCP-Ops Agent 플랫폼 (심사위원 최종 보완 검증판)")
-st.caption("Agentic Tool Binding, Multi-Agent Loop 협업, 백엔드 데이터 무결성 검증 완비 버전")
+st.title("⚙️ OCP-Ops Agent 플랫폼")
+st.caption("Agentic Tool Binding, Multi-Agent Loop 협업, 백엔드 데이터 무결성 검증")
 st.markdown("---")
 
 if "chat_history" not in st.session_state:
