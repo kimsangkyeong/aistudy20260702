@@ -6,75 +6,64 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import Chroma
 from model_factory import ModelFactory
 
-def run_multi_pdf_ingest(data_dir: str):
-    """
-    지정한 디렉토리 내의 모든 PDF 파일을 찾아 텍스트를 추출하고,
-    안전하게 배치를 나누어 하나의 Chroma Vector DB로 통합 적재합니다.
-    """
-    import glob
+def run_structured_ingest(data_dir: str):
     search_path = os.path.join(data_dir, "*.pdf")
     pdf_files = glob.glob(search_path)
     
     if not pdf_files:
-        print(f"[오류] '{data_dir}' 폴더 내에 학습시킬 PDF 파일이 존재하지 않습니다.")
+        print(f"[오류] '{data_dir}' 폴더 내에 PDF 파일이 없습니다.")
         return
 
-    print(f"[⚙️] 총 {len(pdf_files)}개의 PDF 문서가 감지되었습니다.")
-    print("-" * 50)
+    print(f"[*] 총 {len(pdf_files)}개의 문서 분석 및 고도화 섹션 청킹 가동...")
+    all_sections = []
+    
+    # 세부 인프라 명세 분할을 위해 separators 최적화
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=800,
+        chunk_overlap=100,
+        separators=["\n### ", "\n## ", "\n# ", "\n\n", "\n", " "]
+    )
 
-    all_chunks = []
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=900, chunk_overlap=150)
-
-    for index, pdf_path in enumerate(pdf_files, 1):
+    for pdf_path in pdf_files:
         file_name = os.path.basename(pdf_path)
-        print(f"[*] [{index}/{len(pdf_files)}] '{file_name}' 파싱 시작...")
         try:
             loader = PyPDFLoader(pdf_path)
             pages = loader.load()
+            
+            # 문서 구조화를 위해 페이지 콘텐츠 상단 메타데이터 매핑 공정 보완
             for page in pages:
                 page.metadata["source_file"] = file_name
+                if "disconnected" in file_name.lower():
+                    page.metadata["section_category"] = "Disconnected Environment Setup"
+                elif "operator" in file_name.lower():
+                    page.metadata["section_category"] = "Operator Lifecycle Management"
+                else:
+                    page.metadata["section_category"] = "General Architecture & Commands"
+
             chunks = text_splitter.split_documents(pages)
-            all_chunks.extend(chunks)
-            print(f"    ➔ 파싱 성공: 생성된 청크 {len(chunks)}개")
+            all_sections.extend(chunks)
+            print(f"    ➔ '{file_name}' 전처리 완료: 청크 {len(chunks)}개 변환")
         except Exception as e:
-            print(f"⚠️ [{file_name}] 처리 중 오류 발생으로 건너뜁니다: {e}")
-            continue
+            print(f"⚠️ [{file_name}] 파싱 실패 건너뜁니다: {e}")
 
-    print("-" * 50)
-    print(f"[Content] 모든 PDF 파싱 완료. 총 통합 청크 수: {len(all_chunks)}개")
-
-    # 3. 임베딩 모델 및 로컬 DB 경로 확보
     load_dotenv()
     embeddings = ModelFactory.get_embeddings()
-    db_path = os.getenv("CHROMA_DB_PATH", "./chroma_db")
+    db_path = os.path.abspath(os.getenv("CHROMA_DB_PATH", "./chroma_db"))
 
-    print(f"[*] 로컬 Chroma DB 빌드 시작 (요청 배치 분할 처리 가동)...")
+    print(f"[*] Chroma Vector DB 적재 및 영구 인덱싱 진행 중... ({db_path})")
     
-    # 🔥 [핵심 개선] 300,000 토큰 제한을 우회하기 위해 청크를 100개 단위로 나누어 적재합니다.
+    # 토큰 한도 초과 방지 분할 배치 루프
     batch_size = 100
     vector_store = None
-    
-    for i in range(0, len(all_chunks), batch_size):
-        batch_chunks = all_chunks[i:i + batch_size]
-        print(f"    ➔ 임베딩 진행 중: [{i}/{len(all_chunks)}] 조각 처리...")
-        
+    for i in range(0, len(all_sections), batch_size):
+        batch = all_sections[i:i + batch_size]
         if vector_store is None:
-            # 최초 1회는 초기 인스턴스를 생성하며 적재
-            vector_store = Chroma.from_documents(
-                documents=batch_chunks,
-                embedding=embeddings,
-                persist_directory=db_path
-            )
+            vector_store = Chroma.from_documents(documents=batch, embedding=embeddings, persist_directory=db_path)
         else:
-            # 두 번째 배치부터는 기존 DB 객체에 누적(add_documents)하여 축적
-            vector_store.add_documents(documents=batch_chunks)
-
-    print(f"[🎉 완료] 7권의 OCP 가이드북이 30만 토큰 오류 없이 '{db_path}'에 분할 저장되었습니다!")
+            vector_store.add_documents(documents=batch)
+            
+    print("[🎉 성공] 문서 구조화 기반 RAG 인덱싱 공정이 완벽히 마감되었습니다.")
 
 if __name__ == "__main__":
-    # 데이터 폴더 경로 설정 및 자동 생성 예외 처리
-    target_dir = "./data"
-    os.makedirs(target_dir, exist_ok=True)
-    
-    # 다중 PDF 가동 파이프라인 트리거
-    run_multi_pdf_ingest(target_dir)
+    os.makedirs("./data", exist_ok=True)
+    run_structured_ingest("./data")
