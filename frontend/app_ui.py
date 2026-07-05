@@ -30,11 +30,8 @@ if "active_query" not in st.session_state:
 
 BACKEND_URL = "http://127.0.0.1:8000/api/chat"
 
-# ====================================================================
 # [🔥 크리티컬 패치] 하드코딩 질문 전면 제거 및 순수 Chroma DB 동적 빌드
-# ====================================================================
 def load_dynamic_faq_menu_pure_chroma() -> list:
-    # 💡 "선택 안 함" 이외의 모든 고정 질문 목록 제거
     base_menu = ["선택 안 함"]
     
     try:
@@ -42,26 +39,25 @@ def load_dynamic_faq_menu_pure_chroma() -> list:
         db_path = os.path.abspath(os.getenv("CHROMA_DB_PATH", "./chroma_db"))
         
         if os.path.exists(db_path):
-            # 캐시를 타지 않고, 매번 순수 물리 디렉토리에 접근해 최신 파일 형상을 강제 인터셉트
             vector_store = Chroma(
                 persist_directory=db_path, 
                 embedding_function=embeddings, 
                 collection_name="approved_faq_db"
             )
             
-            all_data = vector_store._collection.get()  # Chroma 네이티브 클라이언트 직접 타격
+            # Chroma 고유의 네이티브 클라이언트 팩토리(_collection.get)를 직접 타격하여 동기화 격차 해소
+            all_data = vector_store._collection.get()
             if all_data and "metadatas" in all_data and all_data["metadatas"]:
                 for meta in all_data["metadatas"]:
-                    if meta and "approved_question" in meta:  # 💡 소문자 키로 명확히 검증
+                    if meta and "approved_question" in meta:
                         approved_q = meta.get("approved_question")
-                        # 중복 적재 방지선을 타며 최신 질문 리스트를 실시간 결합
                         if approved_q and approved_q.strip() and approved_q not in base_menu:
                             base_menu.append(approved_q.strip())
     except Exception as e:
         print(f"[프론트엔드 FAQ 실시간 Clean-Sync 실패 로그] : {e}")
     return base_menu
 
-# 매 렌더링 생명주기마다 100% 무결성을 가진 최신 FAQ 메뉴 리스트 획득
+# 최신 FAQ 메뉴 리스트 획득
 faq_menu = load_dynamic_faq_menu_pure_chroma()
 
 # 1. 히스토리 멀티턴 화면 복원 렌더링
@@ -85,7 +81,7 @@ def handle_faq_selection():
         st.session_state.active_query = selected_val
         st.session_state.faq_widget_version += 1
 
-# 2. 사이드바 빠른 기입 FAQ 메뉴 정의 (★ 순수 Chroma DB 연동 리스트 바인딩)
+# 2. 사이드바 빠른 기입 FAQ 메뉴 정의 (순수 Chroma DB 연동 리스트 바인딩)
 with st.sidebar:
     st.header("📌 단축 FAQ 플레이북")
     st.selectbox(
@@ -100,7 +96,7 @@ with st.sidebar:
 user_query = ""
 if st.session_state.active_query:
     user_query = st.session_state.active_query
-    st.session_state.active_query = "" # 단 1회 전송 후 즉시 클리어 처리하여 무한 반복 차단
+    st.session_state.active_query = "" 
 else:
     chat_input = st.chat_input("질문할 내용을 입력해 주세요...")
     if chat_input:

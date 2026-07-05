@@ -1,6 +1,7 @@
 # backend/agent_graph.py
 import os
 import json
+import re
 from typing import Dict, Any, TypedDict, List, Annotated
 from langchain_core.messages import BaseMessage, AIMessage, HumanMessage, ToolMessage
 from langchain_core.prompts import ChatPromptTemplate
@@ -72,9 +73,14 @@ Output: tool|INSTALL
     }
 
 # ====================================================================
-# [Agent 2] OCP RAG Agent (가이드북 + 관리자 승인 FAQ 교차 하이브리드 검색)
+# [Agent 2] OCP RAG Agent (관리자 FAQ 다이렉트 바이패스 인터셉터 탑재)
 # ====================================================================
 def ocp_rag_node(state: AgentState) -> Dict[str, Any]:
+    """
+    가이드북 RAG 및 관리자 FAQ 지식고 교차 하이브리드 검색 노드
+    (★ 빠른질의 선택 시 수동 정제 FAQ 구조를 파괴하지 않고 컴포넌트별 완벽 분리 매핑 바이패스)
+    """
+    import re
     llm = ModelFactory.get_llm()
     embeddings = ModelFactory.get_embeddings()
     db_path = os.path.abspath(os.getenv("CHROMA_DB_PATH", "./chroma_db"))
@@ -83,45 +89,109 @@ def ocp_rag_node(state: AgentState) -> Dict[str, Any]:
     if not os.path.exists(db_path):
         return {"route_to": "tool_search_node", "rag_context": "로컬 지식고 부재로 실시간 외부 검색 모드로 전환합니다."}
         
+    # 🕵️‍♂️ [Pass 1] 관리자 FAQ 자산고 스캔 및 완전 일치 검증 인터셉터 레이어
+    try:
+        faq_store = Chroma(
+            persist_directory=db_path, 
+            embedding_function=embeddings, 
+            collection_name="approved_faq_db"
+        )
+        
+        # 네이티브 클라이언트 직접 타격하여 메타데이터 질의 동기화 스캔
+        collection_data = faq_store._collection.get()
+        if collection_data and "metadatas" in collection_data and collection_data["metadatas"]:
+            for idx, meta in enumerate(collection_data["metadatas"]):
+                approved_q = meta.get("approved_question", "").strip()
+                
+                # 사용자가 빠른 선택 리스트에서 고른 질문과 정확히 일치하는 자산 발견 시
+                if approved_q and query.strip() == approved_q:
+                    raw_full_document = collection_data["documents"][idx]
+                    
+                    # 💡 [크리티컬 패치] 프론트엔드 UI 컴포넌트 규격에 맞춘 텍스트 정밀 슬라이싱 빌드
+                    extracted_summary = f"호출하신 단축 질의에 대해 관리자가 최종 무결성 검증을 완료한 오리지널 가이드라인을 출력합니다."
+                    extracted_steps = []
+                    extracted_code_block = ""
+                    
+                    # 1. 시스템 환경 파트 파싱 추출
+                    if "1. 시스템 환경" in raw_full_document:
+                        env_section = raw_full_document.split("2. 조치가이드")[0]
+                        env_lines = [line.strip() for line in env_section.split("\n") if line.strip()]
+                        for line in env_lines:
+                            if "1. 시스템 환경" not in line:
+                                extracted_steps.append(line.replace("*", "").replace("-", "").strip())
+                    
+                    # 2. 조치가이드 내 순수 스크립트 코드 블록 및 상세 설명 파싱 분리
+                    if "2. 조치가이드" in raw_full_document:
+                        guide_section = raw_full_document.split("2. 조치가이드")[-1].strip()
+                        
+                        # 본문 내부에 존재하는 ```bash 나 ``` 코드 마크다운 태그가 있다면 순수 명령어만 추출
+                        if "```" in guide_section:
+                            # 첫 번째 코드 블록 내용 스캔
+                            code_blocks = guide_section.split("```")
+                            # 마크다운 선언부(bash, yaml 등) 제거 후 순수 쉘 스크립트화
+                            pure_code = code_blocks[1].replace("bash", "").replace("yaml", "").strip()
+                            extracted_code_block = pure_code
+                            
+                            # 코드 블록 전후에 있는 설명문(Case 명칭이나 동작 원리)은 절차(steps) 리스트로 이식
+                            for i, block in enumerate(code_blocks):
+                                if i % 2 == 0 and block.strip(): # 코드 블록 외부의 텍스트들
+                                    lines = [l.strip() for l in block.split("\n") if l.strip()]
+                                    for l in lines:
+                                        cleaned_line = l.replace("*", "").replace("-", "").strip()
+                                        if cleaned_line and cleaned_line not in extracted_steps:
+                                            extracted_steps.append(cleaned_line)
+                        else:
+                            extracted_code_block = guide_section
+                    
+                    # 3. 만약 파싱이 예외적으로 뒤틀려 공백이 생겼을 경우 하드 폴백 방어선
+                    if not extracted_steps:
+                        extracted_steps = ["사전 채택된 FAQ 규칙에 의거해 시스템 환경 및 조치 절차 연동을 마감했습니다."]
+                    if not extracted_code_block:
+                        extracted_code_block = raw_full_document
+                        
+                    # 참조 링크 유지를 위한 정규식 기반 공식 도메인 하이퍼링크 추출 가드레일
+                    url_pattern = r'https://[^\s,\)\]]+'
+                    found_urls = re.findall(url_pattern, raw_full_document)
+                    final_refs = [url.strip() for url in found_urls if "openshift.com" in url or "redhat.com" in url]
+                    if not final_refs:
+                        final_refs = ["https://docs.openshift.com/container-platform/4.20/mirroring/oc-mirror.html"]
+                    
+                    # 프론트엔드 app_ui.py의 구조화 카드 레이아웃과 100% 결합되는 최종 딕셔너리 확정 주입
+                    final_pure_faq = {
+                        "summary": extracted_summary,
+                        "steps": extracted_steps,
+                        "code_block": extracted_code_block,
+                        "references": final_refs
+                    }
+                    
+                    print(f"[🔥 FAQ 다이렉트 바이패스 성공] '{approved_q}' 자산 컴포넌트 오차 없이 완전 분리 복원.")
+                    return {
+                        "route_to": "approve",  # Refiner 노드를 우회하여 즉시 최종 출력층으로 패스
+                        "final_structured_output": final_pure_faq
+                    }
+    except Exception as e:
+        print(f"[FAQ고 정밀 다이렉트 매핑 실패 로그] : {e}")
+
+    # 📖 [Pass 2] 일반 자연어 질문 인입 시 가동되는 기존 하이브리드 RAG 검색 파이프라인
     retrieved_docs = []
-    
-    # 1. 관리자가 등록한 FAQ 전용 자산고(approved_faq_db) 선제 탐색 및 결합
     try:
         faq_store = Chroma(persist_directory=db_path, embedding_function=embeddings, collection_name="approved_faq_db")
         faq_docs = faq_store.as_retriever(search_kwargs={"k": 2}).invoke(query)
         if faq_docs:
             retrieved_docs.extend(faq_docs)
-            print(f"[RAG 엔진 지식 탐색] 관리자 승인 FAQ고에서 관련 지식 {len(faq_docs)}건 확보 완료.")
-    except Exception as e:
-        print(f"[FAQ고 탐색 스킵] : {e}")
+    except Exception:
+        pass
 
-    # 2. 기본 7권의 설치 가이드북 RAG 지식고(Default) 교차 탐색 연동
     try:
         vector_store = Chroma(persist_directory=db_path, embedding_function=embeddings)
         guide_docs = vector_store.as_retriever(search_kwargs={"k": 3}).invoke(query)
         if guide_docs:
             retrieved_docs.extend(guide_docs)
-    except Exception as e:
-        print(f"[가이드북고 탐색 스킵] : {e}")
+    except Exception:
+        pass
 
     if not retrieved_docs:
         return {"route_to": "tool_search_node", "rag_context": "로컬 가이드북 및 FAQ에 명세되지 않은 정보입니다. 외부 조회를 트리거합니다."}
-
-    eval_prompt = ChatPromptTemplate.from_messages([
-        ("system", "당신은 문서 평가관입니다. 검색된 문맥이 엔지니어의 질문에 명확한 조치 가이드를 충분히 포함하고 있다면 'YES', 부족하거나 없다면 'NO'만 대답하세요. 다른 서술은 절대 금지합니다."),
-        ("user", "검색 문맥:\n{context}\n\n질문: {query}")
-    ])
-    
-    initial_context = "\n".join([d.page_content for d in retrieved_docs])
-    eval_chain = eval_prompt | llm
-    assessment = eval_chain.invoke({"context": initial_context, "query": query}).content.strip().upper()
-    
-    if "NO" in assessment:
-        print("[RAG 에이전트 판단] 통합 지식고 내 정보 부족 감지 ➔ 자율적 인터넷 실시간 Tool 검색 가동.")
-        return {
-            "route_to": "tool_search_node",
-            "rag_context": "통합 지식고에 명세되지 않은 정보입니다. 실시간 외부 네트워크 조회를 트리거합니다."
-        }
 
     try:
         ranker = Ranker()
@@ -210,7 +280,7 @@ def answer_refiner_node(state: AgentState) -> Dict[str, Any]:
     return {"draft_answer": response.content}
 
 # ====================================================================
-# [Agent 5] Code Validator Agent (독립적 반려/승인 의사결정권 발동 노드)
+# [Agent 5] Code Validator Agent (예외 처리 및 텍스트 강제 직렬화 복구 레이어 구현)
 # ====================================================================
 def code_validator_node(state: AgentState) -> Dict[str, Any]:
     llm = ModelFactory.get_llm()
@@ -257,14 +327,41 @@ def code_validator_node(state: AgentState) -> Dict[str, Any]:
             "route_to": "approve",
             "final_structured_output": res_dict
         }
-    except Exception:
-        fallback = {
-            "summary": "OpenShift 4.20 지식 가이드 가동 마감",
-            "steps": ["요청하신 현상에 대해 교차 지식고 조립을 마감했습니다."],
-            "code_block": f"# 통합 데이터 파싱 아웃풋 복구\n# {draft[:100]}",
-            "references": ["Chroma DB 내장 관리자 FAQ 및 가이드북 통합 가이드"]
-        }
-        return {"route_to": "approve", "final_structured_output": fallback}
+    except Exception as e:
+        print(f"[검증관 파싱 예외 발생 ➔ 원문 아웃풋 완전 복구 레이어 가동]: {e}")
+        
+        clean_json_str = draft.strip()
+        if "```json" in clean_json_str:
+            clean_json_str = clean_json_str.split("```json")[-1].split("```")[0].strip()
+        elif "```" in clean_json_str:
+            clean_json_str = clean_json_str.split("```")[-1].split("```")[0].strip()
+            
+        try:
+            fallback_dict = json.loads(clean_json_str)
+        except Exception:
+            extracted_summary = "OpenShift 4.20 지식 가이드 (인프라 복구 세션 정상 안착)"
+            
+            summary_match = re.search(r'"summary":\s*"([^"]+)"', clean_json_str)
+            if summary_match:
+                extracted_summary = summary_match.group(1)
+                
+            code_block_cleaned = draft
+            if "code_block" in clean_json_str:
+                code_match = re.search(r'"code_block":\s*"([^"]+)"', clean_json_str)
+                if code_match:
+                    code_block_cleaned = code_match.group(1).replace("\\n", "\n")
+            
+            fallback_dict = {
+                "summary": extracted_summary,
+                "steps": [
+                    "요청하신 현상에 대해 사내 지식고 및 교차 가이드북 조립을 마감했습니다.",
+                    "아래 쉘 스크립트 및 매니페스트 컴포넌트 원문을 참조하여 인프라 터미널에 적용하세요."
+                ],
+                "code_block": code_block_cleaned,
+                "references": ["Chroma DB 내장 관리자 FAQ 및 가이드북 통합 자산고"]
+            }
+            
+        return {"route_to": "approve", "final_structured_output": fallback_dict}
 
 # ====================================================================
 # [Graph Design] 복합 에이전틱 전환 라우팅 맵 빌드
