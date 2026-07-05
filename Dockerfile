@@ -21,6 +21,6 @@ COPY . .
 # 6. FastAPI(8000) 및 Streamlit(8501) 포트 전역 개방
 EXPOSE 8000
 EXPOSE 8501
-
+ 
 # 7. 초기 백엔드 가동 명령어 지시 (Streamlit은 별도 구동하거나 엔트리포인터 튜닝)
 CMD ["python", "-m", "backend.main"]

@@ -13,4 +13,4 @@ python -m backend.main
 ## Step 3. UI 기동하기
 ### [터미널 2] 입력 방어선이 결합된 Streamlit UI 구동:
 ```bash
-streamlit run frontend/app_ui.py
+streamlit run frontend/app_ui.py 

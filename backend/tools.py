@@ -11,7 +11,7 @@ class 사내망Disconnected인프라_LiveSearchTool(BaseTool):
         "Red Hat 공식 Errata 및 OpenShift 4.20 최신 버그 조치 내역을 실시간으로 검색하는 도구입니다. "
         "입력 파파라미터인 query에는 검색하고자 하는 OCP 장애 현상이나 에러 키워드를 기입하세요."
     )
-
+ 
     def _run(self, query: str) -> str:
         """사내망/폐쇄망 내부 인프라 제약 시 자율 작동하는 백업 트랙킹 비즈니스 로직"""
         print(f"[Tool Core 실행 로그] 에이전트 프레임워크 주도로 '{query}' 검색 수행 중...")

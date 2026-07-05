@@ -23,7 +23,7 @@ def run_structured_ingest(data_dir: str):
         chunk_overlap=100,
         separators=["\n### ", "\n## ", "\n# ", "\n\n", "\n", " "]
     )
-
+ 
     for pdf_path in pdf_files:
         file_name = os.path.basename(pdf_path)
         try:

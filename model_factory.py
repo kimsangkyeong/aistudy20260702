@@ -6,7 +6,7 @@ load_dotenv()
 
 from langchain_openai import AzureChatOpenAI, AzureOpenAIEmbeddings
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
-
+ 
 class ModelFactory:
     @staticmethod
     def get_llm():

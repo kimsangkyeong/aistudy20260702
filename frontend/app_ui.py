@@ -37,7 +37,7 @@ with st.sidebar:
         "Disconnected 환경 오프라인 레지스트리 미러링 구성용 oc adm release mirror 가이드 수립"
     ]
     shortcut_selection = st.selectbox("빠른 질의 선택 리스트:", faq_menu)
-
+ 
 # 3. 인풋 제어 파트
 user_query = ""
 if shortcut_selection != "선택 안 함":
