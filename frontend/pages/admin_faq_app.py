@@ -1,6 +1,14 @@
-# frontend/pages/admin_faq.py
+# frontend/pages/admin_faq_app.py
 import os
+import sys
 import streamlit as st
+
+# 🔥 [크리티컬 패치] 파이썬이 상위 루트 디렉토리의 model_factory를 상시 탐색할 수 있도록 경로 가드레일 자동 주입
+current_dir = os.path.dirname(os.path.abspath(__file__))
+root_dir = os.path.abspath(os.path.join(current_dir, "..", ".."))
+if root_dir not in sys.path:
+    sys.path.append(root_dir)
+
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_community.vectorstores import Chroma
@@ -64,7 +72,7 @@ if st.button("🔍 RAG 지식고 검색 및 1차 가이드라인 원격 추출")
             st.session_state.admin_current_response = initial_output
     else:
         st.warning("⚠️ 질문란이 비어 있습니다. 텍스트를 기입해 주세요.")
- 
+
 # ====================================================================
 # [UI Flow 2] 답변 실시간 확인 및 인간 개입형 보완 피드백 루프 (Human-in-the-loop)
 # ====================================================================
