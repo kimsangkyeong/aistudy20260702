@@ -30,13 +30,14 @@ langchain-community==0.2.5    # Community tools, including FlashRank integration
 # [Layer 5] LangGraph Workflow Orchestration
 # ====================================================================
 
-langgraph==0.1.4              # Orchestration for Router, Expert, and Validator
+langgraph==0.2.19              # Orchestration for Router, Expert, and Validator
+langgraph-checkpoint==1.0.12 
 
 # ====================================================================
 # [Layer 6] LLM Provider Integration
 # ====================================================================
 
-langchain-openai==0.1.9       # Azure OpenAI driver (GPT-4o, Embed-3)
+langchain-openai==0.1.9        # Azure OpenAI driver (GPT-4o, Embed-3)
 langchain-google-genai==1.0.6 # Google Gemini driver (fallback and local development)
 
 # ====================================================================
