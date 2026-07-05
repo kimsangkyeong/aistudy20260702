@@ -1,0 +1,60 @@
+# ====================================================================
+# [Layer 1] Environment & Network Core
+# ====================================================================
+
+python-dotenv==1.0.1          # Load .env configuration
+requests==2.32.3              # REST API communication between Streamlit & FastAPI
+
+# ====================================================================
+# [Layer 2] FastAPI Backend Layer (Simple REST API Endpoints)
+# ====================================================================
+
+fastapi==0.111.0              # Async REST API framework
+uvicorn==0.30.1               # High-performance ASGI server for FastAPI
+
+# ====================================================================
+# [Layer 3] Frontend UI Layer (Interactive Dashboard)
+# ====================================================================
+
+streamlit==1.35.0             # Interactive Web UI for chat & FAQ
+
+# ====================================================================
+# [Layer 4] LangChain Core Framework
+# ====================================================================
+
+langchain==0.2.5              # Main framework abstraction
+langchain-core==0.2.9         # Prompts, messages and schema definitions
+langchain-community==0.2.5    # Community tools, including FlashRank integration
+
+# ====================================================================
+# [Layer 5] LangGraph Workflow Orchestration
+# ====================================================================
+
+langgraph==0.1.4              # Orchestration for Router, Expert, and Validator
+
+# ====================================================================
+# [Layer 6] LLM Provider Integration
+# ====================================================================
+
+langchain-openai==0.1.9       # Azure OpenAI driver (GPT-4o, Embed-3)
+langchain-google-genai==1.0.6 # Google Gemini driver (fallback and local development)
+
+# ====================================================================
+# [Layer 7] High-Precision RAG Infrastructure & Preprocessing
+# ====================================================================
+
+pydantic==2.7.4               # Structured output validation (OCPResponseSchema)
+pypdf==4.2.0                  # PDF reader for OpenShift manuals
+chromadb==0.5.3               # Vector database for document chunking storage
+langchain-chroma==0.1.2       # Standard LangChain interface for Chroma DB
+flashrank==0.2.8              # Contextual Reranking core engine
+
+# ====================================================================
+# Windows Docker 실행방법
+# ====================================================================
+
+## 1. 윈도우 프로젝트 폴더 내에서 도커 이미지 빌드
+# docker build -t ocp-ops-agent:1.0.0 .
+
+## 2. .env 환경변수를 자동으로 불러와 컨테이너 기동
+# docker run -d -p 8000:8000 -p 8501:8501 --env-file .env ocp-ops-agent:1.0.0
