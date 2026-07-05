@@ -22,5 +22,10 @@ COPY . .
 EXPOSE 8000
 EXPOSE 8501
  
-# 7. 초기 백엔드 가동 명령어 지시 (Streamlit은 별도 구동하거나 엔트리포인터 튜닝)
-CMD ["python", "-m", "backend.main"]
+# 실행 전 윈도우/리눅스 개행 문자 충돌 방지 및 가동 권한 부여 선언
+RUN apt-get update && apt-get install -y dos2unix && \
+    dos2unix start.sh && \
+    chmod +x start.sh
+
+# 🔥 [최종 완결] 단일 명령어가 아닌 통합 가동 쉘 스크립트를 엔트리포인터로 지정
+CMD ["./start.sh"]
