@@ -4,7 +4,7 @@ from typing import List
 class ChatRequest(BaseModel):
     message: str
     thread_id: str = "ocp_default_thread"
- 
+
 class OCPResponseSchema(BaseModel):
     summary: str = Field(description="조치 결과에 대한 핵심 요약")
     steps: List[str] = Field(description="폐쇄망 환경에서 수행해야 하는 단계별 가이드")

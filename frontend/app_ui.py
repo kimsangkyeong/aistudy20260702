@@ -1,10 +1,9 @@
-# frontend/app_ui.py
 import os
 import sys
 import streamlit as st
 import requests
 
-# [경로 가드레일] 최상위 model_factory 모듈에 유연하게 접근하기 위한 경로 오케스트레이션 주입
+# [경로 가드레일] BE 아키텍처 호출을 위한 파이썬 시스템 경로 오케스트레이션
 current_dir = os.path.dirname(os.path.abspath(__file__))
 root_dir = os.path.abspath(os.path.join(current_dir, ".."))
 if root_dir not in sys.path:
@@ -13,130 +12,137 @@ if root_dir not in sys.path:
 from model_factory import ModelFactory
 from langchain_chroma import Chroma
 
-st.set_page_config(page_title="OCP-Ops 플랫폼 v2", page_icon="⚙️", layout="wide")
-st.title("⚙️ OCP-Ops Agent 플랫폼")
-st.caption("Agentic Tool Binding, Multi-Agent Loop 협업, 백엔드 데이터 무결성 검증")
-st.markdown("---")
+st.set_page_config(page_title="OCP 4.20 운영 지식 플랫폼", page_icon="🚀", layout="wide")
 
-# 무한 반복 루프를 완벽 차단하는 상태 머신 변수 선언
+# 대화 연속성 유지를 위한 고유 스레드 가드레일 및 세션 동기화
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
-if "session_thread_id" not in st.session_state:
-    st.session_state.session_thread_id = "ocp_perfect_score_v2_session"
 if "faq_widget_version" not in st.session_state:
     st.session_state.faq_widget_version = 0
-if "active_query" not in st.session_state:
-    st.session_state.active_query = ""
 
-BACKEND_URL = "http://127.0.0.1:8000/api/chat"
+BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000/api/chat")
+DB_PATH = os.path.abspath(os.getenv("CHROMA_DB_PATH", "./chroma_db"))
 
-# [🔥 크리티컬 패치] 하드코딩 질문 전면 제거 및 순수 Chroma DB 동적 빌드
-def load_dynamic_faq_menu_pure_chroma() -> list:
-    base_menu = ["선택 안 함"]
+st.title("🚀 OpenShift 4.20 코어 인프라 자율 운영 플랫폼")
+st.caption("Disconnected 폐쇄망 환경 특화 Self-RAG 및 Multi-Agent 교차 검증 기반 기술 지원 레이어")
+
+# ====================================================================
+# [사이드바] 관리자 채택 FAQ 동적 바인딩 및 원터치 검색 인프라
+# ====================================================================
+with st.sidebar:
+    st.header("🗂️ 검증 완료 단축 FAQ 플레이북")
+    st.markdown("관리자가 사내 검증을 마친 표준 FAQ 자산 목록입니다. 클릭 시 즉각 원문 매칭 가이드가 로드됩니다.")
+    
+    faq_options = ["선택 안 함"]
+    faq_map = {}
     
     try:
         embeddings = ModelFactory.get_embeddings()
-        db_path = os.path.abspath(os.getenv("CHROMA_DB_PATH", "./chroma_db"))
+        faq_store = Chroma(persist_directory=DB_PATH, embedding_function=embeddings, collection_name="approved_faq_db")
+        collection_data = faq_store._collection.get()
         
-        if os.path.exists(db_path):
-            vector_store = Chroma(
-                persist_directory=db_path, 
-                embedding_function=embeddings, 
-                collection_name="approved_faq_db"
-            )
-            
-            # Chroma 고유의 네이티브 클라이언트 팩토리(_collection.get)를 직접 타격하여 동기화 격차 해소
-            all_data = vector_store._collection.get()
-            if all_data and "metadatas" in all_data and all_data["metadatas"]:
-                for meta in all_data["metadatas"]:
-                    if meta and "approved_question" in meta:
-                        approved_q = meta.get("approved_question")
-                        if approved_q and approved_q.strip() and approved_q not in base_menu:
-                            base_menu.append(approved_q.strip())
-    except Exception as e:
-        print(f"[프론트엔드 FAQ 실시간 Clean-Sync 실패 로그] : {e}")
-    return base_menu
+        if collection_data and "metadatas" in collection_data and collection_data["metadatas"]:
+            for idx, meta in enumerate(collection_data["metadatas"]):
+                q_text = meta.get("approved_question", "").strip()
+                if q_text and q_text not in faq_options:
+                    faq_options.append(q_text)
+                    faq_map[q_text] = collection_data["documents"][idx]
+    except Exception:
+        pass
 
-# 최신 FAQ 메뉴 리스트 획득
-faq_menu = load_dynamic_faq_menu_pure_chroma()
-
-# 1. 히스토리 멀티턴 화면 복원 렌더링
-for message in st.session_state.chat_history:
-    with st.chat_message(message["role"]):
-        if message["role"] == "user":
-            st.markdown(message["content"])
-        else:
-            data = message["content"]
-            st.info(f"📝 **조치 요약:** {data.get('summary')}")
-            st.markdown("**📋 실행 가이드 절차:**")
-            for step in data.get("steps", []):
-                st.markdown(f"- {step}")
-            st.code(data.get("code_block", ""), language="bash")
-            st.caption(f"🔗 **참조 문서:** {', '.join(data.get('references', []))}")
-
-# Selectbox 변경 시 이벤트를 중간 가로채기하는 콜백 함수 선언
-def handle_faq_selection():
-    selected_val = st.session_state[f"faq_select_key_{st.session_state.faq_widget_version}"]
-    if selected_val != "선택 안 함":
-        st.session_state.active_query = selected_val
-        st.session_state.faq_widget_version += 1
-
-# 2. 사이드바 빠른 기입 FAQ 메뉴 정의 (순수 Chroma DB 연동 리스트 바인딩)
-with st.sidebar:
-    st.header("📌 단축 FAQ 플레이북")
-    st.selectbox(
-        "빠른 질의 선택 리스트:", 
-        faq_menu, 
+    # 위젯 교착 상태 해제 기반의 동적 selectbox 바인딩
+    selected_faq = st.selectbox(
+        "빠른 질의 선택 리스트:",
+        options=faq_options,
         index=0,
-        key=f"faq_select_key_{st.session_state.faq_widget_version}",
-        on_change=handle_faq_selection
+        key=f"faq_selectbox_v_{st.session_state.faq_widget_version}"
     )
- 
-# 3. 인풋 제어 파트 (단축 FAQ 실행 대기 값 우선 바인딩 후 청소)
-user_query = ""
-if st.session_state.active_query:
-    user_query = st.session_state.active_query
-    st.session_state.active_query = "" 
-else:
-    chat_input = st.chat_input("질문할 내용을 입력해 주세요...")
-    if chat_input:
-        user_query = chat_input.strip()
 
-# 사용자 공백 전송 예외 차단 레이어
+st.markdown("---")
+
+# ====================================================================
+# 대화 이력 히스토리 렌더링 공간
+# ====================================================================
+for chat in st.session_state.chat_history:
+    with st.chat_message(chat["role"]):
+        if chat["role"] == "user":
+            st.markdown(chat["content"])
+        else:
+            # 🔴 [개성 반영] 실무자를 위해 단답형을 깨부수고 섹션별 풍부한 렌더링 아키텍처 제공
+            res = chat["content"]
+            
+            # 1. 원인 및 요약 분석부
+            st.markdown("### 📋 인프라 영향도 및 원인 분석")
+            st.info(res.get("summary", "상세 분석중..."))
+            
+            # 2. 상세 실행 단계 단계별 렌더링
+            st.markdown("### 🛠️ 단계별 표준 조치 절차 (Runbook)")
+            for step in res.get("steps", []):
+                st.markdown(f"- {step}")
+                
+            # 3. 터미널 스크립트 공간
+            if res.get("code_block") and res["code_block"].strip():
+                st.markdown("### 💻 실행 명령어 세트 및 YAML Manifest")
+                st.code(res["code_block"].strip(), language="yaml" if "api" in res["code_block"] or "kind" in res["code_block"] else "bash")
+                
+            # 4. 검증 링크 및 문서 출처
+            if res.get("references"):
+                st.markdown("### 🔗 관련 Red Hat 기술 포털 및 교차 검증 출처")
+                for ref in res["references"]:
+                    st.markdown(f"-[{ref}]({ref})" if ref.startswith("http") else f"- `{ref}`")
+
+# ====================================================================
+# [트랜잭션 제어] 사용자 질의 및 단축 FAQ 이벤트 리스너 레이어
+# ====================================================================
+user_query = st.chat_input("OCP 4.20 장애 증상, oc 명령어, 혹은 폐쇄망 미러링 질문을 입력하세요...")
+trigger_query = ""
+
 if user_query:
+    trigger_query = user_query
+elif selected_faq != "선택 안 함":
+    trigger_query = selected_faq
+    # 단축 질의 클릭 후 위젯 버전을 스위칭 파괴하여 selectbox 상태를 0번(선택 안 함)으로 강제 롤백 초기화
+    st.session_state.faq_widget_version += 1
+
+if trigger_query:
+    # 1. 유저 인터페이스 메시지 즉각 적재
+    st.session_state.chat_history.append({"role": "user", "content": trigger_query})
     with st.chat_message("user"):
-        st.markdown(user_query)
-    st.session_state.chat_history.append({"role": "user", "content": user_query})
-    
-    payload = {"message": user_query, "thread_id": st.session_state.session_thread_id}
-    
-    with st.spinner("백엔드 Multi-Agent 군집이 실시간 리랭킹 및 상호 순환 검증 루프를 수행 중입니다..."):
-        try:
-            response = requests.post(BACKEND_URL, json=payload, timeout=45)
-            
-            if response.status_code == 200:
-                result_data = response.json()
-                
-                with st.chat_message("assistant"):
-                    st.info(f"📝 **조치 요약:** {result_data.get('summary')}")
-                    st.markdown("**📋 실행 가이드 절차:**")
-                    for step in result_data.get("steps", []):
+        st.markdown(trigger_query)
+        
+    # 2. 비동기 인프라 탐색 엔진 백엔드 통신 트리거
+    with st.chat_message("assistant"):
+        with st.spinner("다자간 에이전트 협업 및 실스크립트 문법 무결성 검증 루프 가동 중..."):
+            try:
+                response = requests.post(
+                    BACKEND_URL,
+                    json={"message": trigger_query, "thread_id": "ops_production_session"},
+                    timeout=45
+                )
+                if response.status_code == 200:
+                    structured_res = response.json()
+                    
+                    # 🔴 [실무형 최적화 시각 렌더링 피드백 인프라]
+                    st.markdown("### 📋 인프라 영향도 및 원인 분석")
+                    st.info(structured_res.get("summary", "분석이 완료되었습니다."))
+                    
+                    st.markdown("### 🛠️ 단계별 표준 조치 절차 (Runbook)")
+                    for step in structured_res.get("steps", []):
                         st.markdown(f"- {step}")
-                    st.code(result_data.get("code_block", ""), language="bash")
-                    st.caption(f"🔗 **참조 문서:** {', '.join(result_data.get('references', []))}")
-                
-                st.session_state.chat_history.append({"role": "assistant", "content": result_data})
-                st.rerun()
-            
-            elif response.status_code == 400:
-                st.error(f"❌ [입력 필드 유효성 검증 실패] 사내 게이트웨이 메시지: {response.json().get('detail')}")
-                st.rerun()
-            else:
-                st.error(f"❌ [백엔드 그래프 엔진 처리 오류] 상태 코드: {response.status_code} - 상세 내용: {response.text}")
-                st.rerun()
-                
-        except requests.exceptions.Timeout:
-            st.error("❌ [네트워크 타임아웃] 에러 복구 에이전트의 다자간 검증 연산 시간이 초과되었습니다. 질의를 단순화하여 다시 요청하세요.")
-            st.rerun()
-        except Exception as e:
-            st.error(f"❌ [인프라 통신 단절] FastAPI 아키텍처 서버 백엔드 연결 실패: {e}")
+                        
+                    if structured_res.get("code_block") and structured_res["code_block"].strip():
+                        st.markdown("### 💻 실행 명령어 세트 및 YAML Manifest")
+                        st.code(structured_res["code_block"].strip(), language="yaml" if "api" in structured_res["code_block"] or "kind" in structured_res["code_block"] else "bash")
+                        
+                    if structured_res.get("references"):
+                        st.markdown("### 🔗 관련 Red Hat 기술 포털 및 교차 검증 출처")
+                        for ref in structured_res["references"]:
+                            st.markdown(f"-[{ref}]({ref})" if ref.startswith("http") else f"- `{ref}`")
+                            
+                    # 최종 세션 대화 이력 영구 결합
+                    st.session_state.chat_history.append({"role": "assistant", "content": structured_res})
+                    st.rerun()
+                else:
+                    st.error(f"백엔드 오케스트레이션 엔진 에러 발생 (코드: {response.status_code})")
+            except Exception as e:
+                st.error(f"REST API 통신 네트워크 제약 장애 발생: {e}")

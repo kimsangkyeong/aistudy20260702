@@ -1,8 +1,7 @@
-# model_factory.py (글로벌 규격 완벽 정제 버전)
 import os
 from dotenv import load_dotenv
 
-# 파일 최상단에서 시스템 인프라 환경 변수 확실하게 로드
+# 파일 최상단에서 환경변수 로딩 수행
 load_dotenv()
 
 from langchain_openai import AzureChatOpenAI, AzureOpenAIEmbeddings
@@ -14,9 +13,13 @@ class ModelFactory:
         env_type = os.getenv("RUNNING_ENV", "GEMINI").upper()
         
         if env_type == "AZURE":
+            # 🔥 [교정] 엔지니어님이 설정하신 'AOAI_ENDPOINT' 명칭으로 정확히 매핑합니다.
             endpoint = os.getenv("AOAI_ENDPOINT")
             api_key = os.getenv("AOAI_API_KEY")
             
+            if not endpoint or not api_key:
+                print("[⚠️ 경고] .env 파일에서 AOAI_ENDPOINT 또는 AOAI_API_KEY를 읽지 못했습니다.")
+                
             return AzureChatOpenAI(
                 azure_deployment=os.getenv("AOAI_DEPLOY_GPT4O"),
                 openai_api_key=api_key,
@@ -25,10 +28,8 @@ class ModelFactory:
                 temperature=0
             )
         else:
-            # api_version="v1" 지정을 통해 하위 드라이버의 v1beta 엉뚱한 변환을 막고 gemini-1.5-pro와 정석 연동
             return ChatGoogleGenerativeAI(
                 model="gemini-1.5-pro",
-                api_version="v1",
                 google_api_key=os.getenv("GEMINI_API_KEY"),
                 temperature=0
             )
@@ -38,9 +39,11 @@ class ModelFactory:
         env_type = os.getenv("RUNNING_ENV", "GEMINI").upper()
         
         if env_type == "AZURE":
+            # 🔥 [교정] 임베딩 측 엔드포인트도 'AOAI_ENDPOINT' 명칭으로 수정합니다.
             endpoint = os.getenv("AOAI_ENDPOINT")
             api_key = os.getenv("AOAI_API_KEY")
             
+            # LangChain 표준 프레임워크 호환용 글로벌 스코프 강제 주입
             if endpoint:
                 os.environ["AZURE_OPENAI_ENDPOINT"] = endpoint
             if api_key:
@@ -55,6 +58,5 @@ class ModelFactory:
         else:
             return GoogleGenerativeAIEmbeddings(
                 model="models/text-embedding-004",
-                api_version="v1",
                 google_api_key=os.getenv("GEMINI_API_KEY")
             )
